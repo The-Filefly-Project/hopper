@@ -1,0 +1,16 @@
+{
+    "include": [
+        "./src"
+    ],
+    "compilerOptions": {
+        "target": "es2022",
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
+        "outDir": "build",
+        "sourceMap": true,
+        "skipLibCheck": true,
+        "esModuleInterop": true,
+        "forceConsistentCasingInFileNames": true,
+        "strict": true,
+    }
+}

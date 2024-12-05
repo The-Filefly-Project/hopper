@@ -1,0 +1,20 @@
+{
+  "name": "hopper",
+  "version": "1.0.0",
+  "description": "Fast and tiny hash router with support for page transitions.",
+  "main": "build/Router.js",
+  "type": "module",
+  "scripts": {
+    "test": "vitest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/The-Filefly-Project/hopper.git"
+  },
+  "author": "4S1ght",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/The-Filefly-Project/hopper/issues"
+  },
+  "homepage": "https://github.com/The-Filefly-Project/hopper#readme"
+}
