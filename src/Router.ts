@@ -1,11 +1,19 @@
-interface Route {
-    segments: string[],
-    callback: () => void
+
+type NavigationHandler = () => void | Promise<void>
+
+interface RouteEntry {
+    string: string
+    /** Individual segments of the route. */
+    segments: string[]
+    /** Callbacks fired when the route is matched and is is being entered. */
+    afterEnter: NavigationHandler
+    /** Callbacks called before the location is left. */
+    beforeExit: NavigationHandler
 }
 
 export default class Router {
 
-    #routes: Route[] = []
+    #routes: Record<string, RouteEntry> = {}
 
     constructor() {}
 
@@ -13,24 +21,90 @@ export default class Router {
 
     /**
      * Adds a new route handler.
-     * @param {string} route - String route to match.
-     * @param {() => void} callback - Route handler.
-     * ```ts
-     * // Example
-     * router.add('/user/:id',            req => console.log(req.params.id))
-     * router.add('/user/*',              req => console.log(req.wildcards[0]))
-     * router.add('/user/settings/:page', req => console.log(req.params.page))
-     * ```
+     * The route handler will be registered for one of two events - `beforeExit` or `afterEnter`.
+     * The choice of two different event types is to allow for programmatically playing page
+     * transitions with based on whether the user is leaving a location or has just entered it.
+     * @param route - String route to match.
+     * @param handlers - Path handlers
      */
-    add(route: string, callback: () => void) {
-        this.#routes.push({
-            segments: route.split('/'),
-            callback
+    add(hash: string, handlers: Record<'beforeExit' | 'afterEnter', NavigationHandler>) {
+        const route = new Router.Route(hash)
+        this.#routes[route.string] = {
+            string: route.string,
+            segments: route.segments,
+            beforeExit: handlers.beforeExit,
+            afterEnter: handlers.afterEnter
+        }
+    }
+
+    remove(hash: string) {
+        delete this.#routes[hash]
+    }
+
+    listen() {
+        window.addEventListener('hashchange', e => {
+            this.#handleHashChange(e)
         })
     }
 
-    remove(route: string) {
-        this.#routes = this.#routes.filter(r => r.segments.join('/') !== route)
+    // Live navigation ========================================================
+
+    static Route = class {
+
+        public string: string
+        public segments: string[]
+        public queries: Record<string, string>
+    
+        /**
+         * Instantiates a new Hash instance used as part of the event chain
+         * of the router. This class is purely for convenience and serves a similar
+         * purpose to the native URL class.
+         */
+        constructor(hash: string) {
+            const noHash = hash.replace(/#\/|#/, '')
+            const noLead = noHash.startsWith('/') ? noHash.slice(1) : noHash
+            const noTrail = noLead.endsWith('/') ? noLead.slice(0, -1) : noLead
+            const [route, queryString] = noTrail.split('?')
+            this.queries = queryString ? Object.fromEntries(new URLSearchParams(queryString)) : {}
+            this.string = route
+            this.segments = route.split('/')
+        }
+        
+    } 
+
+    async #handleHashChange(e: HashChangeEvent) {
+        
+        const entering = new Router.Route(new URL(e.newURL).hash)
+        const match = this.#chooseBest(entering.segments)
+
+        console.log('entering:', entering)
+        console.log('match:', match)
+
+        // if (!match) {
+        //     // todo Handle 404
+        // }
+
+
+        // const leavingEntry = this.#routes[leavingRoute.route]
+        // const enteringEntry = this.#routes[enteringRoute.route]
+
+        // if (leavingEntry) {
+        //     try { for (const callback of leavingEntry.beforeExit) await callback() } 
+        //     catch (error) { console.error(`An error occurred while leaving "${leavingRoute.route}"`, error); this.#listeningPaused = false  }
+        // }
+
+        // if (enteringEntry) {
+        //     try { for (const callback of enteringEntry.afterEnter) await callback() } 
+        //     catch (error) { console.error(`An error occurred while entering "${enteringRoute.route}"`, error); this.#listeningPaused = false }
+        // }
+        // // Handle 404 client-side
+        // else {
+
+        // }
+
+
+        // console.log(leavingRoute, enteringRoute)
+
     }
 
     // Ranking ================================================================
@@ -77,7 +151,7 @@ export default class Router {
             // Trailing wildcard match
             if (i === route.length - 1 && rc && rc === '*') {
                 if (!uc) return 0
-                const trailLength = user.length - i
+                const trailLength = user.length-1 - i
                 score += trailLength * this.#WILDCARD_MATCH
                 break
             }
@@ -96,24 +170,38 @@ export default class Router {
 
     }
 
+    #chooseBest(user: string[]): string {
+
+        let best: [number, string] = [0, '']
+
+        for (const route in this.#routes) {
+            const entry = this.#routes[route]
+            const rank = this.rank(entry.segments, user)
+            if (rank > best[0]) best = [rank, route]
+        }
+
+        return best[1]
+
+    }
+
 }
 
-const r = new Router()
-const routes = [
-    'user/:id',
-    'user/*',
-    'user/*/test/*',
-    'user/settings/:page',
-    'user/*/hello',
-    '*/*/hello',
-    '*//hello',
-    'user/102954782/hello/*',
-]
+// const r = new Router()
+// const routes = [
+//     'user/:id',
+//     'user/*',
+//     'user/*/test/*',
+//     'user/settings/:page',
+//     'user/*/hello',
+//     '*/*/hello',
+//     '*//hello',
+//     'user/102954782/hello/*',
+// ]
 
-console.log(routes.map(route => [
-    r.rank(
-        route.split('/'), 
-        'user/102954782/hello'.split('/')
-    ), 
-    route
-]))
+// console.log(routes.map(route => [
+//     r.rank(
+//         route.split('/'), 
+//         'user/102954782/hello'.split('/')
+//     ), 
+//     route
+// ]))
