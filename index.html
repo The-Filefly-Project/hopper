@@ -13,7 +13,15 @@
     import Router from './build/Router.js'
 
     const router = new Router()
-    router.mount()
+    router.add('/hello/world', {
+        beforeExit: req => console.log(req.params.id),
+        afterEnter: req => console.log(req.params.id)
+    })
+    router.add('/not/:so/*', {
+        beforeExit: req => console.log(req.params.id),
+        afterEnter: req => console.log(req.params.id)
+    })
+    router.listen()
 
 </script>
 </html>

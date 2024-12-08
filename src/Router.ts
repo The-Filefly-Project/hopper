@@ -1,7 +1,33 @@
 
-type NavigationHandler = () => void | Promise<void>
+interface RouteChangeEvent {
+    /** 
+     * Request path.  
+     * Eg. `/settings/profile/edit` 
+     */
+    path: string
+    /** 
+     * URL parameters.  
+     * Eg. `{ id: '123', page: 'edit' }` extracted from `/user/:id/:page`
+     */
+    params: Record<string, string>
+    /** 
+     * URL segments matched by wildcards (`*`).  
+     * Eg. `['profile', 'edit']`  extracted from `/user/*`.  
+     * **Note** - Wildcards in the middle of the route match single segments while
+     * wildcards at the end of the route are recursive and match any number of them.
+     */
+    wildcards: Array<string>
+    /** 
+     * URL queries.  
+     * Eg. `{ id: '123', page: 'edit' }` extracted from `/url/?id=123&page=edit`. 
+     */
+    queries: Record<string, string>
+}
+
+type NavigationHandler = (e: RouteChangeEvent) => void | Promise<void>
 
 interface RouteEntry {
+    /** Route as a string. */
     string: string
     /** Individual segments of the route. */
     segments: string[]
@@ -11,9 +37,11 @@ interface RouteEntry {
     beforeExit: NavigationHandler
 }
 
+
 export default class Router {
 
     #routes: Record<string, RouteEntry> = {}
+    #currentRoute: string | undefined
 
     constructor() {}
 
@@ -41,10 +69,14 @@ export default class Router {
         delete this.#routes[hash]
     }
 
-    listen() {
-        window.addEventListener('hashchange', e => {
-            this.#handleHashChange(e)
-        })
+    #listener = (e: HashChangeEvent) => this.#handleHashChange(e)
+
+    startListening() {
+        window.addEventListener('hashchange', this.#listener)
+    }
+
+    stopListening() {
+        window.removeEventListener('hashchange', this.#listener)
     }
 
     // Live navigation ========================================================
@@ -74,36 +106,32 @@ export default class Router {
 
     async #handleHashChange(e: HashChangeEvent) {
         
-        const entering = new Router.Route(new URL(e.newURL).hash)
-        const match = this.#chooseBest(entering.segments)
+        const entering      = new Router.Route(new URL(e.newURL).hash)
+        const matchingRoute = this.#chooseBest(entering.segments)
+        const match         = this.#routes[matchingRoute!] as RouteEntry | undefined
+        const lastMatch     = this.#routes[this.#currentRoute!] as RouteEntry | undefined
 
-        console.log('entering:', entering)
-        console.log('match:', match)
+        const details = this.#getUserRouteDetails(match ? match.segments : [], entering.segments)
+        const event: RouteChangeEvent = {
+            path: entering.string,
+            params: details.params,
+            wildcards: details.wildcards,
+            queries: entering.queries,
+        }
 
-        // if (!match) {
-        //     // todo Handle 404
-        // }
+        if (lastMatch) {
+            try { await lastMatch.beforeExit(event) } 
+            catch (error) { console.error(`An error occurred while leaving "${lastMatch.string}".`, error) }
+        }
 
-
-        // const leavingEntry = this.#routes[leavingRoute.route]
-        // const enteringEntry = this.#routes[enteringRoute.route]
-
-        // if (leavingEntry) {
-        //     try { for (const callback of leavingEntry.beforeExit) await callback() } 
-        //     catch (error) { console.error(`An error occurred while leaving "${leavingRoute.route}"`, error); this.#listeningPaused = false  }
-        // }
-
-        // if (enteringEntry) {
-        //     try { for (const callback of enteringEntry.afterEnter) await callback() } 
-        //     catch (error) { console.error(`An error occurred while entering "${enteringRoute.route}"`, error); this.#listeningPaused = false }
-        // }
-        // // Handle 404 client-side
-        // else {
-
-        // }
-
-
-        // console.log(leavingRoute, enteringRoute)
+        if (match) {
+            try { await match.afterEnter(event) } 
+            catch (error) { console.error(`An error occurred while entering "${match.string}".`, error) }
+        }
+        else {
+            try { await this.#routes['404'].afterEnter(event) } 
+            catch (error) { console.error(`An error occurred while entering "404" page.`, error) }
+        }
 
     }
 
@@ -115,17 +143,12 @@ export default class Router {
 
     /**
      * Assigns a score to the the user-provided path based on its similarity to a resource route.
-     * The score is calculated as follows:
-     *  - Exact match: 3 points
-     *  - Parameter match: 2 points
-     *  - Wildcard match: 1 point
-     *  - Non-match: 0 points, scoring stops
      * 
      * Note that both parameters must be prepared by removing any leading or trailing slashes.
-     * Failure to do so will in a miscalculated score.
+     * Failure to do so will result in a miscalculated score.
      * @param {string[]} route - Resource route segments.
      * @param {string[]} user - User route segments.
-     * @returns {number} Score.
+     * @returns {number} Route similarity score.
      */
     rank(route: string[], user: string[]): number { 
 
@@ -159,7 +182,6 @@ export default class Router {
             // Wildcard match 
             if (rc && rc === '*') {
                 score += this.#WILDCARD_MATCH
-                continue
             }
 
             return 0
@@ -170,7 +192,7 @@ export default class Router {
 
     }
 
-    #chooseBest(user: string[]): string {
+    #chooseBest(user: string[]): string | undefined {
 
         let best: [number, string] = [0, '']
 
@@ -180,28 +202,48 @@ export default class Router {
             if (rank > best[0]) best = [rank, route]
         }
 
-        return best[1]
+        return best[0] ? best[1] : undefined
+
+    }
+
+    /**
+     * Extracts all the parameters and wildcards from the user-provided route
+     * based on the blueprint route.
+     */
+    #getUserRouteDetails(route: string[], user: string[]) {
+        
+        let wildcards: string[] = []
+        let params: Record<string, string> = {}
+
+        for (let i = 0; i < route.length; i++) {
+
+            const rc = route[i]
+            const uc = user[i]
+
+            // Parameter match
+            if (rc && rc.startsWith(':')) {
+                params[rc.substring(1)] = uc
+                continue
+            }
+
+            // Trailing wildcard match
+            if (i === route.length - 1 && rc === '*') {
+                wildcards.push(...user.slice(route.length-1, user.length))
+                continue
+            }
+
+            // Wildcard match 
+            if (rc === '*') {
+                wildcards.push(uc)
+            }
+
+        }
+
+        return {
+            wildcards,
+            params
+        }
 
     }
 
 }
-
-// const r = new Router()
-// const routes = [
-//     'user/:id',
-//     'user/*',
-//     'user/*/test/*',
-//     'user/settings/:page',
-//     'user/*/hello',
-//     '*/*/hello',
-//     '*//hello',
-//     'user/102954782/hello/*',
-// ]
-
-// console.log(routes.map(route => [
-//     r.rank(
-//         route.split('/'), 
-//         'user/102954782/hello'.split('/')
-//     ), 
-//     route
-// ]))
