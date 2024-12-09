@@ -43,7 +43,13 @@ export default class Router {
     #routes: Record<string, RouteEntry> = {}
     #currentRoute: string | undefined
 
-    constructor() {}
+    /**
+     * Creates a new Router instance.
+     * @param startingRoute - Provide only if initializing the router when a route is already active.
+     */
+    constructor(startingRoute?: string) {
+        this.#currentRoute = startingRoute
+    }
 
     // API ====================================================================
 
@@ -65,17 +71,42 @@ export default class Router {
         }
     }
 
+    /**
+     * Removes a route handler.
+     * @param hash - Hash as a string.
+     */
     remove(hash: string) {
         delete this.#routes[hash]
     }
 
-    #listener = (e: HashChangeEvent) => this.#handleHashChange(e)
+    /**
+     * Set the current hash to the given string.
+     * The hash is normalized by removing any leading hashes and slashes
+     * @param hash - Hash as a string.
+     */
+    set(hash: string) {
+        window.location.hash = `#/${hash.replace(/#\/|#/, '')}`
+    }
+
+    /**
+     * Loads any route matching the current location hash.  
+     * This method is aimed  mainly at navigating to the right location on page load.
+     */
+    load() {
+        this.#handleHashChange(true)
+    }
+
+    #listener = (e: HashChangeEvent) => {
+        this.#handleHashChange()
+    }
 
     startListening() {
         window.addEventListener('hashchange', this.#listener)
+        this.#handleHashChange(true)
+    
     }
 
-    stopListening() {
+    stopListening() { 
         window.removeEventListener('hashchange', this.#listener)
     }
 
@@ -88,7 +119,7 @@ export default class Router {
         public queries: Record<string, string>
     
         /**
-         * Instantiates a new Hash instance used as part of the event chain
+         * Creates a new Hash instance used as part of the event chain
          * of the router. This class is purely for convenience and serves a similar
          * purpose to the native URL class.
          */
@@ -104,9 +135,9 @@ export default class Router {
         
     } 
 
-    async #handleHashChange(e: HashChangeEvent) {
+    async #handleHashChange(noLeave = false) {
         
-        const entering      = new Router.Route(new URL(e.newURL).hash)
+        const entering      = new Router.Route(window.location.hash)
         const matchingRoute = this.#chooseBest(entering.segments)
         const match         = this.#routes[matchingRoute!] as RouteEntry | undefined
         const lastMatch     = this.#routes[this.#currentRoute!] as RouteEntry | undefined
@@ -119,18 +150,21 @@ export default class Router {
             queries: entering.queries,
         }
 
-        if (lastMatch) {
-            try { await lastMatch.beforeExit(event) } 
-            catch (error) { console.error(`An error occurred while leaving "${lastMatch.string}".`, error) }
+        const currentUrl = window.location.href.split('#')[0]
+        history.replaceState(null, '', `${currentUrl}#/${entering.string}`)
+
+        if (lastMatch && !noLeave) {
+            await lastMatch.beforeExit(event)
         }
 
         if (match) {
-            try { await match.afterEnter(event) } 
-            catch (error) { console.error(`An error occurred while entering "${match.string}".`, error) }
+            await match.afterEnter(event)
+            this.#currentRoute = matchingRoute
         }
         else {
-            try { await this.#routes['404'].afterEnter(event) } 
-            catch (error) { console.error(`An error occurred while entering "404" page.`, error) }
+            const r404 = this.#routes['404']
+            if (r404) await r404.afterEnter(event)
+            this.#currentRoute = '404'
         }
 
     }
@@ -150,7 +184,7 @@ export default class Router {
      * @param {string[]} user - User route segments.
      * @returns {number} Route similarity score.
      */
-    rank(route: string[], user: string[]): number { 
+    #rank(route: string[], user: string[]): number { 
 
         let score = 0
 
@@ -198,7 +232,7 @@ export default class Router {
 
         for (const route in this.#routes) {
             const entry = this.#routes[route]
-            const rank = this.rank(entry.segments, user)
+            const rank = this.#rank(entry.segments, user)
             if (rank > best[0]) best = [rank, route]
         }
 
