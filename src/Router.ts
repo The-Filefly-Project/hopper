@@ -40,15 +40,15 @@ interface RouteEntry {
 
 export default class Router {
 
-    #routes: Record<string, RouteEntry> = {}
-    #currentRoute: string | undefined
+    private routes: Record<string, RouteEntry> = {}
+    private currentRoute: string | undefined
 
     /**
      * Creates a new Router instance.
      * @param startingRoute - Provide only if initializing the router when a route is already active.
      */
     constructor(startingRoute?: string) {
-        this.#currentRoute = startingRoute
+        this.currentRoute = startingRoute
     }
 
     // API ====================================================================
@@ -63,7 +63,7 @@ export default class Router {
      */
     add(hash: string, handlers: Record<'beforeExit' | 'afterEnter', NavigationHandler>) {
         const route = new Router.Route(hash)
-        this.#routes[route.string] = {
+        this.routes[route.string] = {
             string: route.string,
             segments: route.segments,
             beforeExit: handlers.beforeExit,
@@ -76,7 +76,7 @@ export default class Router {
      * @param hash - Hash as a string.
      */
     remove(hash: string) {
-        delete this.#routes[hash]
+        delete this.routes[hash]
     }
 
     /**
@@ -93,21 +93,21 @@ export default class Router {
      * This method is aimed  mainly at navigating to the right location on page load.
      */
     load() {
-        this.#handleHashChange(true)
+        this.handleHashChange(true)
     }
 
-    #listener = (e: HashChangeEvent) => {
-        this.#handleHashChange()
+    private listener = (e: HashChangeEvent) => {
+        this.handleHashChange()
     }
 
     startListening() {
-        window.addEventListener('hashchange', this.#listener)
-        this.#handleHashChange(true)
+        window.addEventListener('hashchange', this.listener)
+        this.handleHashChange(true)
     
     }
 
     stopListening() { 
-        window.removeEventListener('hashchange', this.#listener)
+        window.removeEventListener('hashchange', this.listener)
     }
 
     // Live navigation ========================================================
@@ -135,14 +135,14 @@ export default class Router {
         
     } 
 
-    async #handleHashChange(noLeave = false) {
+    private async handleHashChange(noLeave = false) {
         
         const entering      = new Router.Route(window.location.hash)
-        const matchingRoute = this.#chooseBest(entering.segments)
-        const match         = this.#routes[matchingRoute!] as RouteEntry | undefined
-        const lastMatch     = this.#routes[this.#currentRoute!] as RouteEntry | undefined
+        const matchingRoute = this.chooseBest(entering.segments)
+        const match         = this.routes[matchingRoute!] as RouteEntry | undefined
+        const lastMatch     = this.routes[this.currentRoute!] as RouteEntry | undefined
 
-        const details = this.#getUserRouteDetails(match ? match.segments : [], entering.segments)
+        const details = this.getUserRouteDetails(match ? match.segments : [], entering.segments)
         const event: RouteChangeEvent = {
             path: entering.string,
             params: details.params,
@@ -159,21 +159,21 @@ export default class Router {
 
         if (match) {
             await match.afterEnter(event)
-            this.#currentRoute = matchingRoute
+            this.currentRoute = matchingRoute
         }
         else {
-            const r404 = this.#routes['404']
+            const r404 = this.routes['404']
             if (r404) await r404.afterEnter(event)
-            this.#currentRoute = '404'
+            this.currentRoute = '404'
         }
 
     }
 
     // Ranking ================================================================
 
-    #EXACT_MATCH     = 3 as const
-    #PARAMETER_MATCH = 2 as const
-    #WILDCARD_MATCH  = 1 as const
+    private EXACT_MATCH     = 3 as const
+    private PARAMETER_MATCH = 2 as const
+    private WILDCARD_MATCH  = 1 as const
 
     /**
      * Assigns a score to the the user-provided path based on its similarity to a resource route.
@@ -184,7 +184,7 @@ export default class Router {
      * @param {string[]} user - User route segments.
      * @returns {number} Route similarity score.
      */
-    #rank(route: string[], user: string[]): number { 
+    private rank(route: string[], user: string[]): number { 
 
         let score = 0
 
@@ -195,13 +195,13 @@ export default class Router {
 
             // Exact match
             if (rc === uc) {
-                score += this.#EXACT_MATCH
+                score += this.EXACT_MATCH
                 continue
             }
 
             // Parameter match
             if (rc && rc.startsWith(':')) {
-                score += this.#PARAMETER_MATCH
+                score += this.PARAMETER_MATCH
                 continue
             }
 
@@ -209,13 +209,13 @@ export default class Router {
             if (i === route.length - 1 && rc && rc === '*') {
                 if (!uc) return 0
                 const trailLength = user.length-1 - i
-                score += trailLength * this.#WILDCARD_MATCH
+                score += trailLength * this.WILDCARD_MATCH
                 break
             }
 
             // Wildcard match 
             if (rc && rc === '*') {
-                score += this.#WILDCARD_MATCH
+                score += this.WILDCARD_MATCH
             }
 
             return 0
@@ -226,13 +226,13 @@ export default class Router {
 
     }
 
-    #chooseBest(user: string[]): string | undefined {
+    private chooseBest(user: string[]): string | undefined {
 
         let best: [number, string] = [0, '']
 
-        for (const route in this.#routes) {
-            const entry = this.#routes[route]
-            const rank = this.#rank(entry.segments, user)
+        for (const route in this.routes) {
+            const entry = this.routes[route]
+            const rank = this.rank(entry.segments, user)
             if (rank > best[0]) best = [rank, route]
         }
 
@@ -244,7 +244,7 @@ export default class Router {
      * Extracts all the parameters and wildcards from the user-provided route
      * based on the blueprint route.
      */
-    #getUserRouteDetails(route: string[], user: string[]) {
+    private getUserRouteDetails(route: string[], user: string[]) {
         
         let wildcards: string[] = []
         let params: Record<string, string> = {}
