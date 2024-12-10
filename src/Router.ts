@@ -171,9 +171,15 @@ export default class Router {
 
     // Ranking ================================================================
 
-    private EXACT_MATCH     = 3 as const
-    private PARAMETER_MATCH = 2 as const
-    private WILDCARD_MATCH  = 1 as const
+    private EXACT_MATCH          = 3   as const // Exact matches
+    private PARAMETER_MATCH      = 2   as const // :param matches
+    private WILDCARD_MATCH       = 1   as const // * matches
+
+    // Wildcard matches at the end of the route, used to allow trailing *
+    // to match the route even if it's one segment shorter. Eg:
+    // /some/path/to/* <- matches /some/path/to despite different segment count.
+    // /some/path/to   <- Takes precedence over the wildcard match
+    private WILDCARD_LOOSE_MATCH = 0.5 as const
 
     /**
      * Assigns a score to the the user-provided path based on its similarity to a resource route.
@@ -207,8 +213,11 @@ export default class Router {
 
             // Trailing wildcard match
             if (i === route.length - 1 && rc && rc === '*') {
-                if (!uc) return 0
-                const trailLength = user.length-1 - i
+                if (!uc) {
+                    score -= this.WILDCARD_LOOSE_MATCH
+                    break
+                }
+                const trailLength = user.length - i
                 score += trailLength * this.WILDCARD_MATCH
                 break
             }
@@ -235,7 +244,6 @@ export default class Router {
             const rank = this.rank(entry.segments, user)
             if (rank > best[0]) best = [rank, route]
         }
-
         return best[0] ? best[1] : undefined
 
     }

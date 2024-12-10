@@ -14,14 +14,20 @@
 
     const router = new Router()
     router.add('/hello/world', {
-        beforeExit: req => console.log(req.params.id),
-        afterEnter: req => console.log(req.params.id)
+        beforeExit: e => console.log(e.path),
+        afterEnter: e => console.log(e.path)
     })
     router.add('/not/:so/*', {
-        beforeExit: req => console.log(req.params.id),
-        afterEnter: req => console.log(req.params.id)
+        beforeExit: e => console.log(e.path),
+        afterEnter: e => console.log(e.path)
     })
-    router.listen()
+    router.add('/not/:so/', {
+        beforeExit: e => console.log(e.path),
+        afterEnter: e => console.log(e.path)
+    })
+    router.startListening()
+
+    window.router = router
 
 </script>
 </html>
